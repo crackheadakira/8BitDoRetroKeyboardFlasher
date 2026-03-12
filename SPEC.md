@@ -7,16 +7,16 @@ Source of truth: `src/main.rs`.
 
 ## Device
 
-| Field              | Value                                   |
-| ------------------ | --------------------------------------- |
-| Product            | 8BitDo Retro Keyboard                   |
-| USB VID            | `0x2DC8`                                |
-| USB PID            | `0x5200`                                |
-| HID Usage Page     | `0x008C`                                |
-| HID Usage          | `0x0001`                                |
-| Interface          | 2                                       |
-| MCU                | Telink TLSR82xx (RISC-V 32-bit BLE SoC) |
-| Firmware ID string | `TL 8BiDo`                              |
+| Field              | Value                               |
+| ------------------ | ----------------------------------- |
+| Product            | 8BitDo Retro Keyboard               |
+| USB VID            | `0x2DC8`                            |
+| USB PID            | `0x5200`                            |
+| HID Usage Page     | `0x008C`                            |
+| HID Usage          | `0x0001`                            |
+| Interface          | 2                                   |
+| MCU                | Telink TLSR82xx (TC32 architecture) |
+| Firmware ID string | `TL 8BiDo`                          |
 
 ---
 
@@ -42,18 +42,43 @@ followed by 32 bytes of payload. Unused trailing bytes are zero-padded.
 Offset  Len  Field
 ──────  ───  ─────────────────────────────────────────────
 0       1    Report ID: 0xB2
-1       1    Magic high byte: 0xAA
-2       1    Magic low byte: 0x55 (handshake/finalization) or 0x56 (data + HS4)
-3       1    Payload length
-4       1    Type byte (0xFC, 0xFB, 0xEC, 0xF8, or 0xF4 — see per-packet)
+1       1    0xAA (purpose unknown)
+2       1    0x55 or 0x56 (purpose unknown, varies by packet type)
+3       1    Length (see below)
+4       1    field_4 (observed values: 0xEC, 0xF4, 0xF8, 0xFB, 0xFC — purpose unknown)
 5       1    Sequence number (uint8, wraps 0xFF → 0x01, zero is skipped)
-6       1    Channel / command class
+6       1    Command/channel (0x60–0x63 handshake, 0x64 data, 0x65 commit, 0x66 reboot)
 7+      N    Command-specific payload
 7+N+    -    Zero padding to fill 33 bytes
 ```
 
-**Magic note:** `0xAA55` is used for handshake (HS1-HS3) and finalization
-packets. `0xAA56` is used for data packets and HS4.
+**byte[1]/byte[2]:** `0xAA55` is used for handshake packets (HS1–HS3) and
+finalization packets (commit, reboot). `0xAA56` is used for data packets and HS4.
+Purpose of these bytes is unknown.
+
+**Length field (byte[3]):** Total bytes after the sequence number (byte[5]),
+i.e. `channel(1) + payload_bytes(N) + trailer_bytes`. For non-data packets the
+trailer is absent (0 bytes). For data packets the trailer is 2 bytes. The
+formula holds consistently across all observed packets:
+
+| Packet  | channel | payload | trailer | length |
+| ------- | ------- | ------- | ------- | ------ |
+| HS1–HS4 | 1       | 1       | 0       | `0x03` |
+| HS3     | 1       | 2       | 0       | `0x04` |
+| Data    | 1       | 16      | 2       | `0x13` |
+| Last    | 1       | N≤16    | 2       | N+3    |
+| Commit  | 1       | 9       | 0       | `0x0B` |
+| Reboot  | 1       | 1       | 0       | `0x03` |
+
+**field_4 (byte[4]):** Purpose unknown. Observed values and their contexts:
+
+| Value  | Context               |
+| ------ | --------------------- |
+| `0xFC` | HS1, HS2, HS4, Reboot |
+| `0xFB` | HS3                   |
+| `0xEC` | Data (not last chunk) |
+| `0xF8` | Data (last chunk)     |
+| `0xF4` | Commit                |
 
 ### Device → Host (`0xB1`)
 
@@ -61,9 +86,10 @@ packets. `0xAA56` is used for data packets and HS4.
 Offset  Len  Field
 ──────  ───  ─────────────────────────────────────────────
 0       1    Report ID: 0xB1
-1       2    Magic: 0xAA55
-3       1    Payload length
-4       1    Type byte
+1       1    0xAA
+2       1    0x55
+3       1    Length (same formula as host packets)
+4       1    field_4 (purpose unknown)
 5       1    Device global sequence counter (informational, independent of host)
 6       1    Response type (0xA3 = info, 0xA1 = ready/ACK)
 7       1    Echo of host sequence number
@@ -100,16 +126,13 @@ REBOOT (0x66)                   ──────► (no response; device reboo
 buf[7]==expected_seq`. The second fragment does not match this filter and is
 > discarded automatically by the read loop.
 
-> **Important:** There is no separate VERIFY packet in this implementation.
-> The COMMIT packet is sent after all data chunks. The COMMIT ACK **is** read
-> (2000ms timeout) before sending REBOOT.
+> **Important:** There is no separate VERIFY packet. The COMMIT packet is sent
+> after all data chunks. The COMMIT ACK **is** read (2000ms timeout) before
+> sending REBOOT.
 
 ---
 
-## Handshake Packets (Sequence 0x01-0x04)
-
-Handshake sequence numbers are fixed in the packet bodies, not derived from a
-counter.
+## Handshake Packets (Sequence 0x01–0x04)
 
 ### HS1 — Query Device Info
 
@@ -164,24 +187,19 @@ Offset  Value
 ──────  ─────────────────────────────────────────────────────
 0       0xB2  report ID
 1       0xAA
-2       0x56  magic
-3       0x13  payload length = 19
-4       0xEC  type (not-last) / 0xF8 type (last chunk)
+2       0x56
+3       len   channel(1) + payload(N) + trailer(2) = N+3
+4       0xEC  field_4: not-last chunk / 0xF8: last chunk
 5       seq   wrapping uint8, starts at 0x05, skips 0x00
 6       0x64  channel
-7..22   16 bytes of firmware payload
+7..22   16 bytes of firmware payload (fewer for last chunk)
 23..24  chunk trailer (2 bytes, see below)
 25..32  zeros
 ```
 
-**Last packet** differs in bytes 3 and 4:
-
-- byte[3] = `0x07` (not `0x13`)
-- byte[4] = `0xF8` (not `0xEC`)
-
 ### Chunk Trailer
 
-Each data packet ends with a 2-byte trailer computed over the 16-byte payload:
+Each data packet ends with a 2-byte trailer computed over the chunk payload:
 
 ```rust
 fn chunk_trailer(chunk: &[u8]) -> u16 {
@@ -190,13 +208,12 @@ fn chunk_trailer(chunk: &[u8]) -> u16 {
 }
 ```
 
-The trailer is appended big-endian: `packet[23] = trailer >> 8`, `packet[24] = trailer & 0xFF`.
+Appended big-endian: `packet[7+N] = trailer >> 8`, `packet[7+N+1] = trailer & 0xFF`.
 
 ### Timing
 
 - No deliberate inter-packet delay is implemented.
-- No per-packet ACK is read during data transfer. The device does not send
-  one per chunk.
+- No per-packet ACK is read during data transfer.
 - Progress is sampled every 100 chunks by attempting a non-blocking read
   (200ms timeout) for informational status only.
 
@@ -205,12 +222,11 @@ The trailer is appended big-endian: `packet[23] = trailer >> 8`, `packet[24] = t
 ## Sequence Number Tracking
 
 ```
-Handshake:        HS1=0x01, HS2=0x02, HS3=0x03, HS4=0x04  (fixed in packet bodies)
+Handshake:        HS1=0x01, HS2=0x02, HS3=0x03, HS4=0x04
 Data start:       counter = 0x05
 Increment rule:   next = counter.wrapping_add(1); if next == 0x00 { next = 0x01 }
-After N chunks:   counter is 0x05 advanced N times under the above rule
 Commit:           counter after last data chunk
-Reboot:           counter + 1
+Reboot:           counter after commit
 ```
 
 The device maintains its own independent global sequence counter in
@@ -228,15 +244,21 @@ Offset  Value
 0       0xB2
 1       0xAA
 2       0x55
-3       0x0B  payload length
+3       0x0B  length: channel(1) + payload(9) = 10... off by 1, reason unknown
 4       0xF4
 5       seq
-6       0x65
+6       0x65  channel
+7..14   0x00
 15      0x65
+16..32  0x00
 ```
 
-All other bytes are zero. The commit ACK is read with a 2000ms timeout before
-proceeding. If no ACK is received, a warning is printed but execution continues.
+> **Note:** The commit length field (`0x0B` = 11) is 1 more than the formula
+> predicts (`channel(1) + payload(9)` = 10). The reason for this discrepancy
+> is unknown.
+
+The commit ACK is read with a 2000ms timeout. If no ACK is received the flash
+may be incomplete — the reboot packet is not sent.
 
 ### Reboot Packet (cmd `0x66`)
 
@@ -244,8 +266,8 @@ proceeding. If no ACK is received, a warning is printed but execution continues.
 B2 AA 55 03 FC [seq] 66 66 00 00 ...
 ```
 
-Sent immediately after the commit ACK (or timeout). The device reboots on
-receipt and sends no response. Allow ~500ms for USB re-enumeration.
+Sent immediately after the commit ACK. The device reboots on receipt and sends
+no response. Allow ~500ms for USB re-enumeration.
 
 ---
 
@@ -253,16 +275,14 @@ receipt and sends no response. Allow ~500ms for USB re-enumeration.
 
 - Raw Telink OTA binary, no wrapper or container.
 - Transferred verbatim as 16-byte chunks.
-- Magic marker `KNLT` (Telink OTA marker reversed) appears in the binary header
-  at offset 8–11 (`4B 4E 4C 54`), and again near the end.
-- File size is stored little-endian at offset 24 in the header.
-- The last 4 bytes are a CRC32 checksum (little-endian) computed over all
-  preceding bytes using the standard reflected polynomial `0xEDB88320`,
-  init `0xFFFFFFFF`, **no final XOR** (non-standard — omitting the final
-  `^ 0xFFFFFFFF` step).
+- Magic marker `KNLT` (`4B 4E 4C 54`) at offset 8–11 in the file header.
+- File size stored little-endian at offset 24 in the header.
+- Last 4 bytes: CRC32 checksum (little-endian) over all preceding bytes.
+  Algorithm: standard reflected CRC32, poly `0xEDB88320`, init `0xFFFFFFFF`,
+  **no final XOR** (non-standard).
 - USB string descriptors (UTF-16LE), version strings, and BLE HID NVRAM
-  library symbols (`blehid_nvram_*`) are embedded in plain text.
-- Do not hardcode an expected file size — it varies between versions.
+  symbols (`blehid_nvram_*`) are embedded in plain text.
+- File size varies between versions — do not hardcode an expected size.
 
 ### CRC32 Reference Implementation
 
@@ -297,11 +317,11 @@ t=+3.026ms  HS3 IN   b1 aa55 0b f4 04 a3 03 62 ...
 t=+3.063ms  HS4 OUT  b2 aa56 03 fc 04 63 63 ...
 t=+5.020ms  HS4 IN   b1 aa55 07 f8 05 a1 04 63 ...  [byte[6]=0xa1: flash ready]
 t=+5.051ms  DATA #1  b2 aa56 13 ec 05 64 [16 bytes] [trailer] ...
-t=+81.020ms DATA #1 ACK sampled (device was erasing — 76ms gap)
+t=+81.020ms DATA ACK sampled (device was erasing — 76ms gap)
 t=+81.071ms DATA #2  b2 aa56 13 ec 06 64 [16 bytes] [trailer] ...
             ... (remaining data packets) ...
-            LAST DATA b2 aa56 07 f8 [seq] 64 [<=16 bytes] [trailer] ...
-            COMMIT   b2 aa55 0b f4 [seq] 65 00 ... 65 ...
+            LAST     b2 aa56 [N+3] f8 [seq] 64 [<=16 bytes] [trailer] ...
+            COMMIT   b2 aa55 0b f4 [seq] 65 00 00 00 00 00 00 00 00 65 ...
             COMMIT ACK (2000ms timeout)
             REBOOT   b2 aa55 03 fc [seq] 66 66 ...   [no ACK — device reboots]
 ```

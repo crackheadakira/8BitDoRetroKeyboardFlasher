@@ -99,7 +99,7 @@ impl<'a> EncodePacket for FirmwareChunk<'a> {
         PacketHeader {
             report_id: 0xB2,
             magic: 0xAA56,
-            payload_length: if self.is_final_chunk { 0x07 } else { 0x13 },
+            payload_length: 1 + self.firmware_bytes.len() as u8 + 2,
             packet_type: if self.is_final_chunk { 0xF8 } else { 0xEC },
             channel: 0x64,
         }
