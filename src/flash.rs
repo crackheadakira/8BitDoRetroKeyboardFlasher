@@ -5,6 +5,9 @@ use crate::{PACKET_SIZE, packet::HandshakeStep};
 
 #[derive(thiserror::Error, Debug)]
 pub enum FlashError {
+    #[error("[HidApi] {0}")]
+    HidError(#[from] hidapi::HidError),
+
     #[error("Flash failed")]
     FlashFailed,
 
@@ -17,8 +20,8 @@ pub enum FlashError {
         response_received: [u8; 64],
     },
 
-    #[error("[HidApi] {0}")]
-    HidError(#[from] hidapi::HidError),
+    #[error("Device not recognized. Is this an 8BitDo Retro Keyboard?")]
+    DeviceNotRecognized,
 }
 
 pub struct FlashSession {
@@ -36,8 +39,6 @@ impl FlashSession {
     }
 
     pub fn handshake(&mut self) -> Result<(), FlashError> {
-        // 4 handshakes
-
         const HANDSHAKE_STEPS: [HandshakeStep; 4] = [
             HandshakeStep::QueryDeviceInfo,
             HandshakeStep::QueryCapabilities,
@@ -45,6 +46,7 @@ impl FlashSession {
             HandshakeStep::ConfirmFlashReady,
         ];
 
+        let mut keyboard_identified = false;
         for (i, step) in HANDSHAKE_STEPS.into_iter().enumerate() {
             let packet = step.encode(self.packet_counter);
 
@@ -65,25 +67,18 @@ impl FlashSession {
                 }
             };
 
-            let ascii: String = response
-                .iter()
-                .map(|&b| {
-                    if b.is_ascii_graphic() || b == b' ' {
-                        b as char
-                    } else {
-                        '.'
-                    }
-                })
-                .collect();
-
-            println!("Handshake {}/4 → {:02x?}", i + 1, &response[..n]);
-            println!("ASCII: {}", ascii.trim_matches('.'));
-
             if response.windows(8).any(|w| w == b"TL 8BiDo") {
-                println!("✓ Keyboard identified: TL 8BiDo");
+                println!("Keyboard identified: TL 8BiDo");
+                keyboard_identified = true;
             }
 
+            println!("Handshake {}/4 OK", i + 1);
+
             self.increment_counter();
+        }
+
+        if !keyboard_identified {
+            return Err(FlashError::DeviceNotRecognized);
         }
 
         Ok(())
