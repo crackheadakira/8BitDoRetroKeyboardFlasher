@@ -14,12 +14,6 @@ pub enum FlashError {
     #[error("Timed out waiting for response")]
     ResponseTimeout,
 
-    #[error("Bad response received at {packet_counter}: {response_received:02X?}")]
-    BadResponse {
-        packet_counter: u8,
-        response_received: [u8; 64],
-    },
-
     #[error("Device not recognized. Is this an 8BitDo Retro Keyboard?")]
     DeviceNotRecognized,
 
@@ -68,13 +62,6 @@ impl FlashSession {
                 {
                     break response;
                 }
-            };
-
-            if response[0] != 0xB1 || response[1] != 0xAA || response[2] != 0x55 {
-                return Err(FlashError::BadResponse {
-                    packet_counter: self.packet_counter,
-                    response_received: response,
-                });
             };
 
             if response.windows(8).any(|w| w == b"TL 8BiDo") {

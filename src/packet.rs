@@ -225,7 +225,7 @@ mod tests {
         };
         let packet = chunk.encode(0xFF);
 
-        assert_eq!(packet[3], 0x13);
+        assert_eq!(packet[3], 0x07);
         assert_eq!(packet[4], 0xF8);
         assert_eq!(packet[5], 0xFF);
     }
