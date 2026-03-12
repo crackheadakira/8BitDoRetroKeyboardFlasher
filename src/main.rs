@@ -1,6 +1,6 @@
 use hidapi::HidApi;
 
-use crate::flash::FlashSession;
+use crate::flash::{FlashError, FlashSession};
 
 mod flash;
 mod packet;
@@ -14,7 +14,7 @@ const USAGE: u16 = 0x0001;
 const PACKET_SIZE: usize = 33;
 const PAYLOAD_SIZE: usize = 16;
 
-fn main() {
+fn main() -> Result<(), FlashError> {
     let args: Vec<String> = std::env::args().skip(1).collect();
 
     let firmware_path = args
@@ -60,40 +60,24 @@ fn main() {
             eprintln!("Keyboard not found. Is it connected?");
             std::process::exit(1);
         })
-        .open_device(&api)
-        .unwrap_or_else(|e| {
-            eprintln!("Failed to open device: {e}");
-            std::process::exit(1);
-        });
+        .open_device(&api)?;
 
     println!("Connected to keyboard");
 
     let mut session = FlashSession::new(device);
 
-    session.handshake().unwrap_or_else(|e| {
-        eprintln!("Handshake failed: {e}");
-        std::process::exit(1);
-    });
+    session.handshake()?;
 
     if handshake {
         println!("Handshake succeeded. Run without --handshake to flash.");
-        return;
+        return Ok(());
     }
 
-    session.firmware(firmware).unwrap_or_else(|e| {
-        eprintln!("Firmware transfer failed: {e}");
-        std::process::exit(1);
-    });
-
-    session.commit().unwrap_or_else(|e| {
-        eprintln!("Commit failed: {e}");
-        std::process::exit(1);
-    });
-
-    session.reboot().unwrap_or_else(|e| {
-        eprintln!("Reboot failed: {e}");
-        std::process::exit(1);
-    });
+    session.firmware(firmware)?;
+    session.commit()?;
+    session.reboot()?;
 
     println!("Flash complete.");
+
+    Ok(())
 }
