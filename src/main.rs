@@ -15,21 +15,39 @@ const PACKET_SIZE: usize = 33;
 const PAYLOAD_SIZE: usize = 16;
 
 fn main() {
-    println!("=== 8BitDo Retro Keyboard Flash Tool ===");
-    let handshake = std::env::args().any(|a| a == "--handshake");
+    let args: Vec<String> = std::env::args().skip(1).collect();
 
-    let firmware = std::fs::read("official.dat").expect("Failed to read firmware file");
+    let firmware_path = args
+        .iter()
+        .find(|a| !a.starts_with("--") && a.ends_with(".dat"))
+        .unwrap_or_else(|| {
+            eprintln!("Usage: flash <firmware.dat> [--handshake]");
+            std::process::exit(1);
+        });
+
+    let handshake = args.iter().any(|a| a == "--handshake");
+
+    let firmware = std::fs::read(firmware_path).unwrap_or_else(|e| {
+        eprintln!("Failed to read {firmware_path}: {e}");
+        std::process::exit(1);
+    });
+
+    println!("=== 8BitDo Retro Keyboard Flash Tool ===");
     println!(
-        "Firmware size: {} bytes ({} chunks)",
+        "Firmware: {firmware_path} ({} bytes, {} chunks)",
         firmware.len(),
         firmware.len().div_ceil(PAYLOAD_SIZE)
     );
 
     if handshake {
-        println!("\n*** HANDSHAKE MODE - will abort before flashing ***");
+        println!("Mode: Handshake only");
     }
 
-    let api = HidApi::new().expect("Failed to create HID API");
+    let api = HidApi::new().unwrap_or_else(|e| {
+        eprintln!("Failed to create HID API: {e}");
+        std::process::exit(1);
+    });
+
     let device = api
         .device_list()
         .find(|d| {
@@ -38,35 +56,44 @@ fn main() {
                 && d.usage_page() == USAGE_PAGE
                 && d.usage() == USAGE
         })
-        .expect("Keyboard not found")
+        .unwrap_or_else(|| {
+            eprintln!("Keyboard not found. Is it connected?");
+            std::process::exit(1);
+        })
         .open_device(&api)
-        .expect("Failed to open device");
+        .unwrap_or_else(|e| {
+            eprintln!("Failed to open device: {e}");
+            std::process::exit(1);
+        });
 
-    println!("Connected to keyboard\n");
-    let mut flash_session = FlashSession::new(device);
+    println!("Connected to keyboard");
 
-    println!("[1/4] Sending handshake...");
-    flash_session.handshake().unwrap();
+    let mut session = FlashSession::new(device);
+
+    session.handshake().unwrap_or_else(|e| {
+        eprintln!("Handshake failed: {e}");
+        std::process::exit(1);
+    });
 
     if handshake {
-        println!("\nHandshake succeeded, keyboard is responding correctly.");
-        println!("Run without --handshake to actually flash.");
-        std::process::exit(0);
+        println!("Handshake succeeded. Run without --handshake to flash.");
+        return;
     }
 
-    println!("✓ Handshake successful, proceeding with flash...");
+    session.firmware(firmware).unwrap_or_else(|e| {
+        eprintln!("Firmware transfer failed: {e}");
+        std::process::exit(1);
+    });
 
-    println!("\n[2/4] Sending firmware...");
+    session.commit().unwrap_or_else(|e| {
+        eprintln!("Commit failed: {e}");
+        std::process::exit(1);
+    });
 
-    flash_session.firmware(firmware).unwrap();
+    session.reboot().unwrap_or_else(|e| {
+        eprintln!("Reboot failed: {e}");
+        std::process::exit(1);
+    });
 
-    println!("\n[3/4] Sending commit packet...");
-
-    flash_session.commit().unwrap();
-
-    println!("\n[4/4] Sending reboot packet...");
-
-    flash_session.reboot().unwrap();
-
-    println!("\n=== Flash complete ===");
+    println!("Flash complete.");
 }
