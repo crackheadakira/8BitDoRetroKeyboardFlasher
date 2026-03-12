@@ -12,7 +12,7 @@ The README.md and SPEC.md were written with the assistance of AI, the main sourc
 
 The official 8BitDo Ultimate Software is required to flash firmware updates to the Retro Keyboard. This project reverse engineers the USB HID protocol used during flashing, enabling custom firmware to be written and flashed directly from the command line — on any OS.
 
-The protocol was recovered from a Wireshark USB pcap capture of the official application. The firmware format was reverse engineered from the `.dat` files served by 8BitDo's firmware API.
+The protocol was recovered from a Wireshark USB pcap capture of the official application on a 8BitDo Retro Mechanical Keyboard 85HE. The firmware format was reverse engineered from the `.dat` files served by 8BitDo's firmware API.
 
 ## Features
 
