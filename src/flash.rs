@@ -19,6 +19,9 @@ pub enum FlashError {
 
     #[error("Commit not acknowledged, flash may fail so not sending final packet")]
     CommitNotAcknowledged,
+
+    #[error("Invalid firmware: {0}")]
+    InvalidFirmware(&'static str),
 }
 
 pub struct FlashSession {

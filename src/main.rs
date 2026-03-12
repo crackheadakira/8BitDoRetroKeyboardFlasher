@@ -32,6 +32,13 @@ fn main() -> Result<(), FlashError> {
         std::process::exit(1);
     });
 
+    if firmware.len() < 12 {
+        return Err(FlashError::InvalidFirmware("file too small"));
+    }
+    if &firmware[8..12] != b"KNLT" {
+        return Err(FlashError::InvalidFirmware("missing KNLT magic"));
+    }
+
     println!("=== 8BitDo Retro Keyboard Flash Tool ===");
     println!(
         "Firmware: {firmware_path} ({} bytes, {} chunks)",
