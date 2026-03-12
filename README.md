@@ -61,14 +61,12 @@ cargo build --release
 
 ### Flash
 
-Place your firmware file as `patched.dat` in the working directory, then:
-
 ```bash
 # Test connectivity only (no flash)
-cargo run --release -- --handshake
+cargo run --release -- patched.dat --handshake
 
 # Flash firmware
-cargo run --release
+cargo run --release -- patched.dat
 ```
 
 ### Sign a patched firmware
