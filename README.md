@@ -4,6 +4,10 @@ A reverse-engineered firmware flash tool for the **8BitDo Retro Keyboard**, writ
 
 ---
 
+## Preface
+
+The README.md and SPEC.md were written with the assistance of AI, the main source of truth is the source code itself.
+
 ## Background
 
 The official 8BitDo Ultimate Software is required to flash firmware updates to the Retro Keyboard. This project reverse engineers the USB HID protocol used during flashing, enabling custom firmware to be written and flashed directly from the command line — on any OS.

@@ -5,3 +5,4 @@ edition = "2024"
 
 [dependencies]
 hidapi = "2.6"
+thiserror = "2.0"

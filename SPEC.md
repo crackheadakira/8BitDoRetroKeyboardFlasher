@@ -52,7 +52,7 @@ Offset  Len  Field
 7+N+    -    Zero padding to fill 33 bytes
 ```
 
-**Magic note:** `0xAA55` is used for handshake (HS1–HS3) and finalization
+**Magic note:** `0xAA55` is used for handshake (HS1-HS3) and finalization
 packets. `0xAA56` is used for data packets and HS4.
 
 ### Device → Host (`0xB1`)
@@ -88,7 +88,7 @@ HS3 (0x62) enter DFU mode       ──────►
 HS4 (0x63) confirm ready        ──────►
                                 ◄────── HS4 response  [byte[6]=0xA1 = flash ready]
 
-DATA chunks (0x64) × N          ──────► (fire and forget, no per-packet ACK)
+DATA chunks (0x64) * N          ──────► (fire and forget, no per-packet ACK)
 
 COMMIT (0x65)                   ──────►
                                 ◄────── COMMIT ACK (read with 2000ms timeout)
@@ -106,7 +106,7 @@ buf[7]==expected_seq`. The second fragment does not match this filter and is
 
 ---
 
-## Handshake Packets (Sequence 0x01–0x04)
+## Handshake Packets (Sequence 0x01-0x04)
 
 Handshake sequence numbers are fixed in the packet bodies, not derived from a
 counter.

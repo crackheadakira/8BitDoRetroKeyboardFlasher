@@ -1,5 +1,10 @@
 use hidapi::HidApi;
 
+use crate::flash::FlashSession;
+
+mod flash;
+mod packet;
+
 const VENDOR_ID: u16 = 0x2dc8;
 const PRODUCT_ID: u16 = 0x5200;
 
@@ -28,6 +33,7 @@ fn read_handshake_response(device: &hidapi::HidDevice, expected_seq: u8) -> [u8;
                 expected_seq
             );
         }
+
         if buf[0] == 0xb1 && buf[1] == 0xaa && buf[2] == 0x55 && buf[7] == expected_seq {
             return buf;
         }
@@ -129,7 +135,7 @@ fn main() {
     println!("=== 8BitDo Retro Keyboard Flash Tool ===");
     let handshake = std::env::args().any(|a| a == "--handshake");
 
-    let firmware = std::fs::read("official.dat").expect("Failed to read firmware file");
+    let firmware = std::fs::read("patched.dat").expect("Failed to read firmware file");
     println!(
         "Firmware size: {} bytes ({} chunks)",
         firmware.len(),
@@ -153,24 +159,12 @@ fn main() {
         .open_device(&api)
         .expect("Failed to open device");
 
-    let info = api
-        .device_list()
-        .find(|d| {
-            d.vendor_id() == VENDOR_ID
-                && d.product_id() == PRODUCT_ID
-                && d.usage_page() == USAGE_PAGE
-                && d.usage() == USAGE
-        })
-        .expect("Keyboard not found");
-
-    println!(
-        "Interface: usage_page=0x{:04x} usage=0x{:04x} interface={:?}",
-        info.usage_page(),
-        info.usage(),
-        info.interface_number()
-    );
-
     println!("Connected to keyboard\n");
+    let mut flash_session = FlashSession::new(device);
+
+    flash_session.handshake().unwrap();
+
+    return;
 
     println!("[1/4] Sending handshake...");
     let packets = handshake_packets();
