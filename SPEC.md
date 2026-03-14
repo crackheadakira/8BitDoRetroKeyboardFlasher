@@ -41,18 +41,18 @@ followed by 32 bytes of payload. Unused trailing bytes are zero-padded.
 ```
 Offset  Len  Field
 ──────  ───  ─────────────────────────────────────────────
-0       1    Report ID: 0xB2
+0       1    Report ID: 0xB2 <-- This is stripped in firmware
 1       1    0xAA (purpose unknown)
 2       1    0x55 or 0x56 (purpose unknown, varies by packet type)
 3       1    Length (see below)
-4       1    field_4 (observed values: 0xEC, 0xF4, 0xF8, 0xFB, 0xFC — purpose unknown)
+4       1    Bitwise complement of length
 5       1    Sequence number (uint8, wraps 0xFF → 0x01, zero is skipped)
-6       1    Command/channel (0x60–0x63 handshake, 0x64 data, 0x65 commit, 0x66 reboot)
+6       1    Command/channel (0x60-0x63 handshake, 0x64 data, 0x65 commit, 0x66 reboot)
 7+      N    Command-specific payload
 7+N+    -    Zero padding to fill 33 bytes
 ```
 
-**byte[1]/byte[2]:** `0xAA55` is used for handshake packets (HS1–HS3) and
+**byte[1]/byte[2]:** `0xAA55` is used for handshake packets (HS1-HS3) and
 finalization packets (commit, reboot). `0xAA56` is used for data packets and HS4.
 Purpose of these bytes is unknown.
 
@@ -63,14 +63,12 @@ formula holds consistently across all observed packets:
 
 | Packet  | channel | payload | trailer | length |
 | ------- | ------- | ------- | ------- | ------ |
-| HS1–HS4 | 1       | 1       | 0       | `0x03` |
+| HS1-HS4 | 1       | 1       | 0       | `0x03` |
 | HS3     | 1       | 2       | 0       | `0x04` |
 | Data    | 1       | 16      | 2       | `0x13` |
 | Last    | 1       | N≤16    | 2       | N+3    |
 | Commit  | 1       | 9       | 0       | `0x0B` |
 | Reboot  | 1       | 1       | 0       | `0x03` |
-
-**field_4 (byte[4]):** Purpose unknown. Observed values and their contexts:
 
 | Value  | Context               |
 | ------ | --------------------- |

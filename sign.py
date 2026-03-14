@@ -13,7 +13,7 @@ def firmware_crc(data: bytes) -> int:
 
 path = sys.argv[1]
 data = open(path, 'rb').read()
-payload = data[:-4]  # strip existing checksum
-crc = firmware_crc(payload)
-open(path, 'wb').write(payload + struct.pack('<I', crc))
-print(f'Replaced CRC: {crc:08x} in {path}')
+crc = firmware_crc(data)
+with open(path, 'ab') as f:
+    f.write(struct.pack('<I', crc))
+print(f'Appended CRC: {crc:08x} to {path}')
