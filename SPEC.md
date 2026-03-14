@@ -47,7 +47,7 @@ Offset  Len  Field
 3       1    Length (see below)
 4       1    Bitwise complement of length
 5       1    Sequence number (uint8, wraps 0xFF → 0x01, zero is skipped)
-6       1    Command/channel (0x60-0x63 handshake, 0x64 data, 0x65 commit, 0x66 reboot)
+6       1    Command (0x60-0x63 handshake, 0x64 data, 0x65 commit, 0x66 reboot)
 7+      N    Command-specific payload
 7+N+    -    Zero padding to fill 33 bytes
 ```
@@ -57,11 +57,11 @@ finalization packets (commit, reboot). `0xAA56` is used for data packets and HS4
 Purpose of these bytes is unknown.
 
 **Length field (byte[3]):** Total bytes after the sequence number (byte[5]),
-i.e. `channel(1) + payload_bytes(N) + trailer_bytes`. For non-data packets the
+i.e. `command(1) + payload_bytes(N) + trailer_bytes`. For non-data packets the
 trailer is absent (0 bytes). For data packets the trailer is 2 bytes. The
 formula holds consistently across all observed packets:
 
-| Packet  | channel | payload | trailer | length |
+| Packet  | command | payload | trailer | length |
 | ------- | ------- | ------- | ------- | ------ |
 | HS1-HS4 | 1       | 1       | 0       | `0x03` |
 | HS3     | 1       | 2       | 0       | `0x04` |
@@ -91,7 +91,7 @@ Offset  Len  Field
 5       1    Device global sequence counter (informational, independent of host)
 6       1    Response type (0xA3 = info, 0xA1 = ready/ACK)
 7       1    Echo of host sequence number
-8       1    Channel echo
+8       1    Command echo
 9+      -    Response-specific payload, then zero padding
 ```
 
@@ -167,7 +167,7 @@ that window).
 
 ---
 
-## Data Transfer (Channel `0x64`)
+## Data Transfer (Command `0x64`)
 
 Sequence numbers continue from `0x05` after the handshake.
 
@@ -186,10 +186,10 @@ Offset  Value
 0       0xB2  report ID
 1       0xAA
 2       0x56
-3       len   channel(1) + payload(N) + trailer(2) = N+3
+3       len   Command(1) + payload(N) + trailer(2) = N+3
 4       0xEC  field_4: not-last chunk / 0xF8: last chunk
 5       seq   wrapping uint8, starts at 0x05, skips 0x00
-6       0x64  channel
+6       0x64  Command
 7..22   16 bytes of firmware payload (fewer for last chunk)
 23..24  chunk trailer (2 bytes, see below)
 25..32  zeros
@@ -242,17 +242,17 @@ Offset  Value
 0       0xB2
 1       0xAA
 2       0x55
-3       0x0B  length: channel(1) + payload(9) = 10... off by 1, reason unknown
+3       0x0B  length: command(1) + payload(9) = 10... off by 1, reason unknown
 4       0xF4
 5       seq
-6       0x65  channel
+6       0x65  command
 7..14   0x00
 15      0x65
 16..32  0x00
 ```
 
 > **Note:** The commit length field (`0x0B` = 11) is 1 more than the formula
-> predicts (`channel(1) + payload(9)` = 10). The reason for this discrepancy
+> predicts (`command(1) + payload(9)` = 10). The reason for this discrepancy
 > is unknown.
 
 The commit ACK is read with a 2000ms timeout. If no ACK is received the flash

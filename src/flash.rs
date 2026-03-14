@@ -106,10 +106,8 @@ impl FlashSession {
         let start = std::time::Instant::now();
 
         for (i, chunk) in chunks.iter().enumerate() {
-            let is_last_chunk = total_chunks - 1 == i;
             let packet = FirmwareChunk {
                 firmware_bytes: chunk,
-                is_final_chunk: is_last_chunk,
             }
             .encode(self.packet_counter);
 
@@ -136,7 +134,7 @@ impl FlashSession {
 
                 if n > 0 && response[0] == 0xB1 && response[1] == 0xAA && response[2] == 0x55 {
                     println!(
-                        "{i}/{total_chunks} chunks ({:.1}%) | {bytes_per_sec:.0} B/s | ETA {eta:.1}s | status: cmd={:02X} status={:02X} counter={:02X} channel={:02X}",
+                        "{i}/{total_chunks} chunks ({:.1}%) | {bytes_per_sec:.0} B/s | ETA {eta:.1}s | status: cmd={:02X} status={:02X} counter={:02X} command={:02X}",
                         (i as f32 / total_chunks as f32) * 100.0,
                         response[4],
                         response[5],

@@ -1,5 +1,6 @@
 use crate::PACKET_SIZE;
 
+#[derive(Debug)]
 pub struct PacketHeader {
     report_id: u8,
 
@@ -7,9 +8,9 @@ pub struct PacketHeader {
 
     payload_length: u8,
 
-    packet_type: u8,
+    length_complement: u8,
 
-    channel: u8,
+    command: u8,
 }
 
 #[repr(u8)]
@@ -23,7 +24,6 @@ pub enum HandshakeStep {
 
 pub struct FirmwareChunk<'a> {
     pub firmware_bytes: &'a [u8],
-    pub is_final_chunk: bool,
 }
 
 impl<'a> FirmwareChunk<'a> {
@@ -51,9 +51,9 @@ pub trait EncodePacket {
         buf[1] = (header.magic >> 8) as u8;
         buf[2] = (header.magic & 0xFF) as u8;
         buf[3] = header.payload_length;
-        buf[4] = header.packet_type;
+        buf[4] = header.length_complement;
         buf[5] = packet_counter;
-        buf[6] = header.channel;
+        buf[6] = header.command;
 
         self.write_payload(&mut buf[7..]);
 
@@ -73,11 +73,11 @@ impl EncodePacket for HandshakeStep {
                 HandshakeStep::EnterDfuMode => 0x04,
                 _ => 0x03,
             },
-            packet_type: match self {
+            length_complement: match self {
                 HandshakeStep::EnterDfuMode => 0xFB,
                 _ => 0xFC,
             },
-            channel: *self as u8,
+            command: *self as u8,
         }
     }
 
@@ -96,12 +96,14 @@ impl EncodePacket for HandshakeStep {
 
 impl<'a> EncodePacket for FirmwareChunk<'a> {
     fn header(&self) -> PacketHeader {
+        let payload_length = 1 + self.firmware_bytes.len() as u8 + 2;
+
         PacketHeader {
             report_id: 0xB2,
             magic: 0xAA56,
-            payload_length: 1 + self.firmware_bytes.len() as u8 + 2,
-            packet_type: if self.is_final_chunk { 0xF8 } else { 0xEC },
-            channel: 0x64,
+            payload_length,
+            length_complement: !payload_length,
+            command: 0x64,
         }
     }
 
@@ -122,8 +124,8 @@ impl EncodePacket for CommitPacket {
             report_id: 0xB2,
             magic: 0xAA55,
             payload_length: 0x0B,
-            packet_type: 0xF4,
-            channel: 0x65,
+            length_complement: !0x0B,
+            command: 0x65,
         }
     }
 
@@ -138,8 +140,8 @@ impl EncodePacket for RebootPacket {
             report_id: 0xB2,
             magic: 0xAA55,
             payload_length: 0x03,
-            packet_type: 0xFC,
-            channel: 0x66,
+            length_complement: !0x03,
+            command: 0x66,
         }
     }
 
@@ -158,7 +160,6 @@ mod tests {
     fn test_chunk_trailer_zero_payload() {
         let chunk = FirmwareChunk {
             firmware_bytes: &[],
-            is_final_chunk: false,
         };
         let result = chunk.calculate_chunk_checksum();
         assert_eq!(result, 0x6400);
@@ -172,7 +173,6 @@ mod tests {
         ];
         let chunk = FirmwareChunk {
             firmware_bytes: &payload,
-            is_final_chunk: false,
         };
         let sum: u16 = payload.iter().map(|&b| b as u16).sum();
         let expected = sum.wrapping_add(100).swap_bytes();
@@ -184,7 +184,6 @@ mod tests {
         let payload = [0xFFu8; 16];
         let chunk = FirmwareChunk {
             firmware_bytes: &payload,
-            is_final_chunk: false,
         };
         let sum: u16 = payload.iter().map(|&b| b as u16).sum();
         let expected = sum.wrapping_add(100).swap_bytes();
@@ -192,11 +191,10 @@ mod tests {
     }
 
     #[test]
-    fn test_firmware_packet_not_last() {
+    fn test_firmware_packet() {
         let payload = [0x01u8; PAYLOAD_SIZE];
         let chunk = FirmwareChunk {
             firmware_bytes: &payload,
-            is_final_chunk: false,
         };
         let packet = chunk.encode(0x05);
 
@@ -214,20 +212,6 @@ mod tests {
         assert_eq!(packet[7 + PAYLOAD_SIZE + 1], (trailer & 0xFF) as u8);
 
         assert_eq!(packet.len(), PACKET_SIZE);
-    }
-
-    #[test]
-    fn test_firmware_packet_is_last() {
-        let payload = [0x01u8; PAYLOAD_SIZE];
-        let chunk = FirmwareChunk {
-            firmware_bytes: &payload,
-            is_final_chunk: true,
-        };
-        let packet = chunk.encode(0xFF);
-
-        assert_eq!(packet[3], 0x07);
-        assert_eq!(packet[4], 0xF8);
-        assert_eq!(packet[5], 0xFF);
     }
 
     #[test]
