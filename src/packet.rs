@@ -37,6 +37,8 @@ pub struct CommitPacket;
 
 pub struct RebootPacket;
 
+pub struct DebugLogPacket;
+
 pub trait EncodePacket {
     fn header(&self) -> PacketHeader;
 
@@ -147,6 +149,22 @@ impl EncodePacket for RebootPacket {
 
     fn write_payload(&self, buf: &mut [u8]) {
         buf[0] = 0x66;
+    }
+}
+
+impl EncodePacket for DebugLogPacket {
+    fn header(&self) -> PacketHeader {
+        PacketHeader {
+            report_id: 0xB2,
+            magic: 0xAA55,
+            payload_length: 0x03,
+            length_complement: !0x03,
+            command: 0xF2,
+        }
+    }
+
+    fn write_payload(&self, buf: &mut [u8]) {
+        buf[0] = 0xF2;
     }
 }
 

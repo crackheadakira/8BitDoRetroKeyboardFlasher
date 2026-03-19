@@ -21,11 +21,12 @@ fn main() -> Result<(), FlashError> {
         .iter()
         .find(|a| !a.starts_with("--") && a.ends_with(".dat"))
         .unwrap_or_else(|| {
-            eprintln!("Usage: flash <firmware.dat> [--handshake]");
+            eprintln!("Usage: flash <firmware.dat> [--handshake] [--debug-log]");
             std::process::exit(1);
         });
 
     let handshake = args.iter().any(|a| a == "--handshake");
+    let debug_log = args.iter().any(|a| a == "--debug-log");
 
     let firmware = std::fs::read(firmware_path).unwrap_or_else(|e| {
         eprintln!("Failed to read {firmware_path}: {e}");
@@ -46,7 +47,9 @@ fn main() -> Result<(), FlashError> {
         firmware.len().div_ceil(PAYLOAD_SIZE)
     );
 
-    if handshake {
+    if debug_log {
+        println!("Mode: Fetch Debug Log");
+    } else if handshake {
         println!("Mode: Handshake only");
     }
 
@@ -74,6 +77,11 @@ fn main() -> Result<(), FlashError> {
     let mut session = FlashSession::new(device);
 
     session.handshake()?;
+
+    if debug_log {
+        session.get_debug_log()?;
+        return Ok(());
+    }
 
     if handshake {
         println!("Handshake succeeded. Run without --handshake to flash.");

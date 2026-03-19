@@ -188,6 +188,49 @@ impl FlashSession {
         Ok(())
     }
 
+    pub fn get_debug_log(&mut self) -> Result<(), FlashError> {
+        let packet = crate::packet::DebugLogPacket.encode(self.packet_counter);
+
+        println!("Requesting debug log (Command 0xF2)...");
+        self.send(&packet)?;
+        self.increment_counter();
+
+        let (response, n) = self.read_timeout(2000)?;
+        if n == 0 {
+            return Err(FlashError::ResponseTimeout);
+        }
+
+        if n >= 9
+            && response[0] == 0xB1
+            && response[1] == 0xAA
+            && response[2] == 0x55
+            && response[8] == 0xF2
+        {
+            let log_bytes = &response[9..];
+
+            let ascii: String = log_bytes
+                .iter()
+                .take_while(|&&b| b != 0)
+                .map(|&b| {
+                    if b.is_ascii_graphic() || b == b' ' {
+                        b as char
+                    } else {
+                        '.'
+                    }
+                })
+                .collect();
+
+            println!("--- Device Debug Log ---");
+            println!("Hex:   {:02X?}", &response[9..(n.min(59))]);
+            println!("ASCII: {}", ascii);
+            println!("------------------------");
+        } else {
+            println!("Unexpected or invalid response: {:02X?}", &response[..n]);
+        }
+
+        Ok(())
+    }
+
     fn read_timeout(&self, timeout: i32) -> HidResult<([u8; 64], usize)> {
         let mut response = [0u8; 64];
         let n = self.device.read_timeout(&mut response, timeout)?;
